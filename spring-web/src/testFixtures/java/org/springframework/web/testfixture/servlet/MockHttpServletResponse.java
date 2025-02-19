@@ -24,6 +24,7 @@ import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.io.Writer;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -42,10 +43,10 @@ import java.util.TimeZone;
 import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 import org.springframework.util.LinkedCaseInsensitiveMap;
 import org.springframework.util.StringUtils;
@@ -72,6 +73,8 @@ public class MockHttpServletResponse implements HttpServletResponse {
 
 	private static final TimeZone GMT = TimeZone.getTimeZone("GMT");
 
+	private static final MediaType APPLICATION_PLUS_JSON = new MediaType("application", "*+json");
+
 
 	//---------------------------------------------------------------------
 	// ServletResponse properties
@@ -96,13 +99,11 @@ public class MockHttpServletResponse implements HttpServletResponse {
 
 	private final ServletOutputStream outputStream = new ResponseServletOutputStream(this.content);
 
-	@Nullable
-	private PrintWriter writer;
+	private @Nullable PrintWriter writer;
 
 	private long contentLength = 0;
 
-	@Nullable
-	private String contentType;
+	private @Nullable String contentType;
 
 	private int bufferSize = 4096;
 
@@ -121,16 +122,14 @@ public class MockHttpServletResponse implements HttpServletResponse {
 
 	private int status = HttpServletResponse.SC_OK;
 
-	@Nullable
-	private String errorMessage;
+	private @Nullable String errorMessage;
 
 
 	//---------------------------------------------------------------------
 	// Properties for MockRequestDispatcher
 	//---------------------------------------------------------------------
 
-	@Nullable
-	private String forwardedUrl;
+	private @Nullable String forwardedUrl;
 
 	private final List<String> includedUrls = new ArrayList<>();
 
@@ -316,8 +315,10 @@ public class MockHttpServletResponse implements HttpServletResponse {
 
 	@Override
 	public void setContentLength(int contentLength) {
-		this.contentLength = contentLength;
-		doAddHeaderValue(HttpHeaders.CONTENT_LENGTH, contentLength, true);
+		if (!this.committed) {
+			this.contentLength = contentLength;
+			doAddHeaderValue(HttpHeaders.CONTENT_LENGTH, contentLength, true);
+		}
 	}
 
 	/**
@@ -331,8 +332,10 @@ public class MockHttpServletResponse implements HttpServletResponse {
 
 	@Override
 	public void setContentLengthLong(long contentLength) {
-		this.contentLength = contentLength;
-		doAddHeaderValue(HttpHeaders.CONTENT_LENGTH, contentLength, true);
+		if (!this.committed) {
+			this.contentLength = contentLength;
+			doAddHeaderValue(HttpHeaders.CONTENT_LENGTH, contentLength, true);
+		}
 	}
 
 	public long getContentLengthLong() {
@@ -348,6 +351,10 @@ public class MockHttpServletResponse implements HttpServletResponse {
 				if (mediaType.getCharset() != null) {
 					setExplicitCharacterEncoding(mediaType.getCharset().name());
 				}
+				else if (mediaType.isCompatibleWith(MediaType.APPLICATION_JSON) ||
+						mediaType.isCompatibleWith(APPLICATION_PLUS_JSON)) {
+						this.characterEncoding = StandardCharsets.UTF_8.name();
+				}
 			}
 			catch (Exception ex) {
 				// Try to get charset value anyway
@@ -361,8 +368,7 @@ public class MockHttpServletResponse implements HttpServletResponse {
 	}
 
 	@Override
-	@Nullable
-	public String getContentType() {
+	public @Nullable String getContentType() {
 		return this.contentType;
 	}
 
@@ -481,6 +487,9 @@ public class MockHttpServletResponse implements HttpServletResponse {
 		if (cookie.isHttpOnly()) {
 			buf.append("; HttpOnly");
 		}
+		if (cookie.getAttribute("Partitioned") != null) {
+			buf.append("; Partitioned");
+		}
 		if (cookie instanceof MockCookie mockCookie) {
 			if (StringUtils.hasText(mockCookie.getSameSite())) {
 				buf.append("; SameSite=").append(mockCookie.getSameSite());
@@ -496,8 +505,7 @@ public class MockHttpServletResponse implements HttpServletResponse {
 		return this.cookies.toArray(new Cookie[0]);
 	}
 
-	@Nullable
-	public Cookie getCookie(String name) {
+	public @Nullable Cookie getCookie(String name) {
 		Assert.notNull(name, "Cookie name must not be null");
 		for (Cookie cookie : this.cookies) {
 			if (name.equals(cookie.getName())) {
@@ -532,8 +540,7 @@ public class MockHttpServletResponse implements HttpServletResponse {
 	 * @see HttpServletResponse#getHeader(String)
 	 */
 	@Override
-	@Nullable
-	public String getHeader(String name) {
+	public @Nullable String getHeader(String name) {
 		HeaderValueHolder header = this.headers.get(name);
 		return (header != null ? header.getStringValue() : null);
 	}
@@ -563,8 +570,7 @@ public class MockHttpServletResponse implements HttpServletResponse {
 	 * @param name the name of the header
 	 * @return the associated header value, or {@code null} if none
 	 */
-	@Nullable
-	public Object getHeaderValue(String name) {
+	public @Nullable Object getHeaderValue(String name) {
 		HeaderValueHolder header = this.headers.get(name);
 		return (header != null ? header.getValue() : null);
 	}
@@ -626,7 +632,7 @@ public class MockHttpServletResponse implements HttpServletResponse {
 		sendRedirect(url, HttpServletResponse.SC_MOVED_TEMPORARILY, true);
 	}
 
-	// @Override - on Servlet 6.1
+	@Override
 	public void sendRedirect(String url, int sc, boolean clearBuffer) throws IOException {
 		Assert.state(!isCommitted(), "Cannot send redirect - response is already committed");
 		Assert.notNull(url, "Redirect URL must not be null");
@@ -635,8 +641,7 @@ public class MockHttpServletResponse implements HttpServletResponse {
 		setCommitted(true);
 	}
 
-	@Nullable
-	public String getRedirectedUrl() {
+	public @Nullable String getRedirectedUrl() {
 		return getHeader(HttpHeaders.LOCATION);
 	}
 
@@ -793,8 +798,7 @@ public class MockHttpServletResponse implements HttpServletResponse {
 	/**
 	 * Return the error message used when calling {@link HttpServletResponse#sendError(int, String)}.
 	 */
-	@Nullable
-	public String getErrorMessage() {
+	public @Nullable String getErrorMessage() {
 		return this.errorMessage;
 	}
 
@@ -807,8 +811,7 @@ public class MockHttpServletResponse implements HttpServletResponse {
 		this.forwardedUrl = forwardedUrl;
 	}
 
-	@Nullable
-	public String getForwardedUrl() {
+	public @Nullable String getForwardedUrl() {
 		return this.forwardedUrl;
 	}
 
@@ -819,8 +822,7 @@ public class MockHttpServletResponse implements HttpServletResponse {
 		}
 	}
 
-	@Nullable
-	public String getIncludedUrl() {
+	public @Nullable String getIncludedUrl() {
 		int count = this.includedUrls.size();
 		Assert.state(count <= 1,
 				() -> "More than 1 URL included - check getIncludedUrls instead: " + this.includedUrls);

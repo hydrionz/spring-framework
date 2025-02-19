@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2024 the original author or authors.
+ * Copyright 2002-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ import java.util.function.Predicate;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.BeanDefinitionStoreException;
 import org.springframework.beans.factory.annotation.AnnotatedBeanDefinition;
@@ -69,7 +70,6 @@ import org.springframework.core.type.StandardAnnotationMetadata;
 import org.springframework.core.type.classreading.MetadataReader;
 import org.springframework.core.type.classreading.MetadataReaderFactory;
 import org.springframework.core.type.filter.AssignableTypeFilter;
-import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
@@ -122,8 +122,7 @@ class ConfigurationClassParser {
 
 	private final ResourceLoader resourceLoader;
 
-	@Nullable
-	private final PropertySourceRegistry propertySourceRegistry;
+	private final @Nullable PropertySourceRegistry propertySourceRegistry;
 
 	private final BeanDefinitionRegistry registry;
 
@@ -284,8 +283,7 @@ class ConfigurationClassParser {
 	 * @param sourceClass a source class
 	 * @return the superclass, or {@code null} if none found or previously processed
 	 */
-	@Nullable
-	protected final SourceClass doProcessConfigurationClass(
+	protected final @Nullable SourceClass doProcessConfigurationClass(
 			ConfigurationClass configClass, SourceClass sourceClass, Predicate<String> filter)
 			throws IOException {
 
@@ -323,7 +321,8 @@ class ConfigurationClassParser {
 			List<Condition> registerBeanConditions = collectRegisterBeanConditions(configClass);
 			if (!registerBeanConditions.isEmpty()) {
 				throw new ApplicationContextException(
-						"Component scan could not be used with conditions in REGISTER_BEAN phase: " + registerBeanConditions);
+						"Component scan for configuration class [%s] could not be used with conditions in REGISTER_BEAN phase: %s"
+								.formatted(configClass.getMetadata().getClassName(), registerBeanConditions));
 			}
 			for (AnnotationAttributes componentScan : componentScans) {
 				// The config class is annotated with @ComponentScan -> perform the scan immediately
@@ -360,6 +359,9 @@ class ConfigurationClassParser {
 		// Process individual @Bean methods
 		Set<MethodMetadata> beanMethods = retrieveBeanMethodMetadata(sourceClass);
 		for (MethodMetadata methodMetadata : beanMethods) {
+			if (methodMetadata.isAnnotated("kotlin.jvm.JvmStatic") && !methodMetadata.isStatic()) {
+				continue;
+			}
 			configClass.addBeanMethod(new BeanMethod(methodMetadata, configClass));
 		}
 
@@ -666,7 +668,10 @@ class ConfigurationClassParser {
 	private Collection<SourceClass> asSourceClasses(String[] classNames, Predicate<String> filter) throws IOException {
 		List<SourceClass> annotatedClasses = new ArrayList<>(classNames.length);
 		for (String className : classNames) {
-			annotatedClasses.add(asSourceClass(className, filter));
+			SourceClass sourceClass = asSourceClass(className, filter);
+			if (this.objectSourceClass != sourceClass) {
+				annotatedClasses.add(sourceClass);
+			}
 		}
 		return annotatedClasses;
 	}
@@ -700,8 +705,7 @@ class ConfigurationClassParser {
 		return allConditions.stream().filter(REGISTER_BEAN_CONDITION_FILTER).toList();
 	}
 
-	@Nullable
-	private ConfigurationClass getEnclosingConfigurationClass(ConfigurationClass configurationClass) {
+	private @Nullable ConfigurationClass getEnclosingConfigurationClass(ConfigurationClass configurationClass) {
 		String enclosingClassName = configurationClass.getMetadata().getEnclosingClassName();
 		if (enclosingClassName != null) {
 			return configurationClass.getImportedBy().stream()
@@ -722,8 +726,7 @@ class ConfigurationClassParser {
 		}
 
 		@Override
-		@Nullable
-		public AnnotationMetadata getImportingClassFor(String importedClass) {
+		public @Nullable AnnotationMetadata getImportingClassFor(String importedClass) {
 			return CollectionUtils.lastElement(this.imports.get(importedClass));
 		}
 
@@ -762,8 +765,7 @@ class ConfigurationClassParser {
 
 	private class DeferredImportSelectorHandler {
 
-		@Nullable
-		private List<DeferredImportSelectorHolder> deferredImportSelectors = new ArrayList<>();
+		private @Nullable List<DeferredImportSelectorHolder> deferredImportSelectors = new ArrayList<>();
 
 		/**
 		 * Handle the specified {@link DeferredImportSelector}. If deferred import
@@ -824,6 +826,7 @@ class ConfigurationClassParser {
 				Predicate<String> filter = grouping.getCandidateFilter();
 				grouping.getImports().forEach(entry -> {
 					ConfigurationClass configurationClass = this.configurationClasses.get(entry.getMetadata());
+					Assert.state(configurationClass != null, "ConfigurationClass must not be null");
 					try {
 						processImports(configurationClass, asSourceClass(configurationClass, filter),
 								Collections.singleton(asSourceClass(entry.getImportClassName(), filter)),
@@ -1074,7 +1077,7 @@ class ConfigurationClassParser {
 		}
 
 		public Collection<SourceClass> getAnnotationAttributes(String annType, String attribute) throws IOException {
-			Map<String, Object> annotationAttributes = this.metadata.getAnnotationAttributes(annType, true);
+			Map<String, @Nullable Object> annotationAttributes = this.metadata.getAnnotationAttributes(annType, true);
 			if (annotationAttributes == null || !annotationAttributes.containsKey(attribute)) {
 				return Collections.emptySet();
 			}

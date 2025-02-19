@@ -32,6 +32,7 @@ import org.apache.tomcat.util.http.fileupload.FileUpload;
 import org.apache.tomcat.util.http.fileupload.UploadContext;
 import org.apache.tomcat.util.http.fileupload.disk.DiskFileItemFactory;
 import org.hamcrest.Matcher;
+import org.jspecify.annotations.Nullable;
 import org.w3c.dom.Node;
 
 import org.springframework.core.io.Resource;
@@ -39,10 +40,12 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.ClientHttpRequest;
 import org.springframework.http.converter.FormHttpMessageConverter;
-import org.springframework.lang.Nullable;
 import org.springframework.mock.http.MockHttpInputMessage;
 import org.springframework.mock.http.client.MockClientHttpRequest;
-import org.springframework.test.util.JsonExpectationsHelper;
+import org.springframework.test.json.JsonAssert;
+import org.springframework.test.json.JsonComparator;
+import org.springframework.test.json.JsonCompareMode;
+import org.springframework.test.json.JsonComparison;
 import org.springframework.test.util.XmlExpectationsHelper;
 import org.springframework.test.web.client.RequestMatcher;
 import org.springframework.util.LinkedMultiValueMap;
@@ -71,8 +74,6 @@ public class ContentRequestMatchers {
 
 	private final XmlExpectationsHelper xmlHelper;
 
-	private final JsonExpectationsHelper jsonHelper;
-
 
 	/**
 	 * Class constructor, not for direct instantiation.
@@ -80,7 +81,6 @@ public class ContentRequestMatchers {
 	 */
 	protected ContentRequestMatchers() {
 		this.xmlHelper = new XmlExpectationsHelper();
-		this.jsonHelper = new JsonExpectationsHelper();
 	}
 
 
@@ -330,7 +330,7 @@ public class ContentRequestMatchers {
 	 * @since 5.0.5
 	 */
 	public RequestMatcher json(String expectedJsonContent) {
-		return json(expectedJsonContent, false);
+		return json(expectedJsonContent, JsonCompareMode.LENIENT);
 	}
 
 	/**
@@ -347,12 +347,43 @@ public class ContentRequestMatchers {
 	 * @param expectedJsonContent the expected JSON content
 	 * @param strict enables strict checking
 	 * @since 5.0.5
+	 * @deprecated in favor of {@link #json(String, JsonCompareMode)}
 	 */
+	@Deprecated(since = "6.2")
 	public RequestMatcher json(String expectedJsonContent, boolean strict) {
+		JsonCompareMode compareMode = (strict ? JsonCompareMode.STRICT : JsonCompareMode.LENIENT);
+		return json(expectedJsonContent, compareMode);
+	}
+
+	/**
+	 * Parse the request body and the given string as JSON and assert the two
+	 * using the given {@linkplain JsonCompareMode mode}. If the comparison failed,
+	 * throws an {@link AssertionError} with the message of the {@link JsonComparison}.
+	 * <p>Use of this matcher requires the <a
+	 * href="https://jsonassert.skyscreamer.org/">JSONassert</a> library.
+	 * @param expectedJsonContent the expected JSON content
+	 * @param compareMode the compare mode
+	 * @since 6.2
+	 */
+	public RequestMatcher json(String expectedJsonContent, JsonCompareMode compareMode) {
+		return json(expectedJsonContent, JsonAssert.comparator(compareMode));
+	}
+
+	/**
+	 * Parse the request body and the given string as JSON and assert the two
+	 * using the given {@link JsonComparator}. If the comparison failed, throws an
+	 * {@link AssertionError} with the message of the {@link JsonComparison}.
+	 * <p>Use this matcher if you require a custom JSONAssert configuration or
+	 * if you desire to use another assertion library.
+	 * @param expectedJsonContent the expected JSON content
+	 * @param comparator the comparator to use
+	 * @since 6.2
+	 */
+	public RequestMatcher json(String expectedJsonContent, JsonComparator comparator) {
 		return request -> {
 			try {
 				MockClientHttpRequest mockRequest = (MockClientHttpRequest) request;
-				this.jsonHelper.assertJsonEqual(expectedJsonContent, mockRequest.getBodyAsString(), strict);
+				comparator.assertIsMatch(expectedJsonContent, mockRequest.getBodyAsString());
 			}
 			catch (Exception ex) {
 				throw new AssertionError("Failed to parse expected or actual JSON request content", ex);
@@ -393,13 +424,11 @@ public class ContentRequestMatchers {
 				List<FileItem> fileItems = fileUpload.parseRequest(new UploadContext() {
 					private final byte[] body = request.getBodyAsBytes();
 					@Override
-					@Nullable
-					public String getCharacterEncoding() {
+					public @Nullable String getCharacterEncoding() {
 						return request.getHeaders().getFirst(HttpHeaders.CONTENT_ENCODING);
 					}
 					@Override
-					@Nullable
-					public String getContentType() {
+					public @Nullable String getContentType() {
 						return request.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE);
 					}
 					@Override
