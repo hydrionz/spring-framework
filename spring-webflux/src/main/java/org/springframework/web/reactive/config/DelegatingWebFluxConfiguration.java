@@ -18,6 +18,8 @@ package org.springframework.web.reactive.config;
 
 import java.util.List;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.format.FormatterRegistry;
@@ -64,13 +66,13 @@ public class DelegatingWebFluxConfiguration extends WebFluxConfigurationSupport 
 	}
 
 	@Override
-	protected Validator getValidator() {
+	protected @Nullable Validator getValidator() {
 		Validator validator = this.configurers.getValidator();
 		return (validator != null ? validator : super.getValidator());
 	}
 
 	@Override
-	protected MessageCodesResolver getMessageCodesResolver() {
+	protected @Nullable MessageCodesResolver getMessageCodesResolver() {
 		MessageCodesResolver messageCodesResolver = this.configurers.getMessageCodesResolver();
 		return (messageCodesResolver != null ? messageCodesResolver : super.getMessageCodesResolver());
 	}
@@ -117,7 +119,7 @@ public class DelegatingWebFluxConfiguration extends WebFluxConfigurationSupport 
 	}
 
 	@Override
-	protected WebSocketService getWebSocketService() {
+	protected @Nullable WebSocketService getWebSocketService() {
 		WebSocketService service = this.configurers.getWebSocketService();
 		return (service != null ? service : super.getWebSocketService());
 	}

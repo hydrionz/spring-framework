@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.aot.generate.GeneratedMethod;
 import org.springframework.aot.generate.GeneratedMethods;
 import org.springframework.aot.generate.ValueCodeGenerator;
@@ -101,7 +103,7 @@ abstract class BeanDefinitionPropertyValueCodeGeneratorDelegates {
 		private static final CodeBlock EMPTY_RESULT = CodeBlock.of("$T.ofEntries()", ManagedMap.class);
 
 		@Override
-		public CodeBlock generateCode(ValueCodeGenerator valueCodeGenerator, Object value) {
+		public @Nullable CodeBlock generateCode(ValueCodeGenerator valueCodeGenerator, Object value) {
 			if (value instanceof ManagedMap<?, ?> managedMap) {
 				return generateManagedMapCode(valueCodeGenerator, managedMap);
 			}
@@ -137,7 +139,7 @@ abstract class BeanDefinitionPropertyValueCodeGeneratorDelegates {
 	private static class LinkedHashMapDelegate extends MapDelegate {
 
 		@Override
-		protected CodeBlock generateMapCode(ValueCodeGenerator valueCodeGenerator, Map<?, ?> map) {
+		protected @Nullable CodeBlock generateMapCode(ValueCodeGenerator valueCodeGenerator, Map<?, ?> map) {
 			GeneratedMethods generatedMethods = valueCodeGenerator.getGeneratedMethods();
 			if (map instanceof LinkedHashMap<?, ?> && generatedMethods != null) {
 				return generateLinkedHashMapCode(valueCodeGenerator, generatedMethods, map);
@@ -172,7 +174,7 @@ abstract class BeanDefinitionPropertyValueCodeGeneratorDelegates {
 	private static class BeanReferenceDelegate implements Delegate {
 
 		@Override
-		public CodeBlock generateCode(ValueCodeGenerator valueCodeGenerator, Object value) {
+		public @Nullable CodeBlock generateCode(ValueCodeGenerator valueCodeGenerator, Object value) {
 			if (value instanceof RuntimeBeanReference runtimeBeanReference &&
 					runtimeBeanReference.getBeanType() != null) {
 				return CodeBlock.of("new $T($T.class)", RuntimeBeanReference.class,
@@ -193,7 +195,7 @@ abstract class BeanDefinitionPropertyValueCodeGeneratorDelegates {
 	private static class TypedStringValueDelegate implements Delegate {
 
 		@Override
-		public CodeBlock generateCode(ValueCodeGenerator valueCodeGenerator, Object value) {
+		public @Nullable CodeBlock generateCode(ValueCodeGenerator valueCodeGenerator, Object value) {
 			if (value instanceof TypedStringValue typedStringValue) {
 				return generateTypeStringValueCode(valueCodeGenerator, typedStringValue);
 			}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2024 the original author or authors.
+ * Copyright 2002-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.springframework.http.converter.support;
 
 import org.springframework.http.converter.FormHttpMessageConverter;
 import org.springframework.http.converter.cbor.KotlinSerializationCborHttpMessageConverter;
+import org.springframework.http.converter.cbor.MappingJackson2CborHttpMessageConverter;
 import org.springframework.http.converter.json.GsonHttpMessageConverter;
 import org.springframework.http.converter.json.JsonbHttpMessageConverter;
 import org.springframework.http.converter.json.KotlinSerializationJsonHttpMessageConverter;
@@ -31,7 +32,8 @@ import org.springframework.util.ClassUtils;
 
 /**
  * Extension of {@link org.springframework.http.converter.FormHttpMessageConverter},
- * adding support for XML and JSON-based parts.
+ * adding support for XML, JSON, Smile, CBOR, Protobuf and Yaml based parts when
+ * related libraries are present in the classpath.
  *
  * @author Rossen Stoyanchev
  * @author Juergen Hoeller
@@ -47,6 +49,8 @@ public class AllEncompassingFormHttpMessageConverter extends FormHttpMessageConv
 	private static final boolean jackson2XmlPresent;
 
 	private static final boolean jackson2SmilePresent;
+
+	private static final boolean jackson2CborPresent;
 
 	private static final boolean jackson2YamlPresent;
 
@@ -67,6 +71,7 @@ public class AllEncompassingFormHttpMessageConverter extends FormHttpMessageConv
 						ClassUtils.isPresent("com.fasterxml.jackson.core.JsonGenerator", classLoader);
 		jackson2XmlPresent = ClassUtils.isPresent("com.fasterxml.jackson.dataformat.xml.XmlMapper", classLoader);
 		jackson2SmilePresent = ClassUtils.isPresent("com.fasterxml.jackson.dataformat.smile.SmileFactory", classLoader);
+		jackson2CborPresent = ClassUtils.isPresent("com.fasterxml.jackson.dataformat.cbor.CBORFactory", classLoader);
 		jackson2YamlPresent = ClassUtils.isPresent("com.fasterxml.jackson.dataformat.yaml.YAMLFactory", classLoader);
 		gsonPresent = ClassUtils.isPresent("com.google.gson.Gson", classLoader);
 		jsonbPresent = ClassUtils.isPresent("jakarta.json.bind.Jsonb", classLoader);
@@ -82,9 +87,6 @@ public class AllEncompassingFormHttpMessageConverter extends FormHttpMessageConv
 			addPartConverter(new Jaxb2RootElementHttpMessageConverter());
 		}
 
-		if (kotlinSerializationJsonPresent) {
-			addPartConverter(new KotlinSerializationJsonHttpMessageConverter());
-		}
 		if (jackson2Present) {
 			addPartConverter(new MappingJackson2HttpMessageConverter());
 		}
@@ -93,6 +95,9 @@ public class AllEncompassingFormHttpMessageConverter extends FormHttpMessageConv
 		}
 		else if (jsonbPresent) {
 			addPartConverter(new JsonbHttpMessageConverter());
+		}
+		else if (kotlinSerializationJsonPresent) {
+			addPartConverter(new KotlinSerializationJsonHttpMessageConverter());
 		}
 
 		if (jackson2XmlPresent) {
@@ -103,12 +108,15 @@ public class AllEncompassingFormHttpMessageConverter extends FormHttpMessageConv
 			addPartConverter(new MappingJackson2SmileHttpMessageConverter());
 		}
 
-		if (jackson2YamlPresent) {
-			addPartConverter(new MappingJackson2YamlHttpMessageConverter());
+		if (jackson2CborPresent) {
+			addPartConverter(new MappingJackson2CborHttpMessageConverter());
+		}
+		else if (kotlinSerializationCborPresent) {
+			addPartConverter(new KotlinSerializationCborHttpMessageConverter());
 		}
 
-		if (kotlinSerializationCborPresent) {
-			addPartConverter(new KotlinSerializationCborHttpMessageConverter());
+		if (jackson2YamlPresent) {
+			addPartConverter(new MappingJackson2YamlHttpMessageConverter());
 		}
 
 		if (kotlinSerializationProtobufPresent) {
