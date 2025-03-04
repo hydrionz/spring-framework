@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2024 the original author or authors.
+ * Copyright 2002-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,86 +16,45 @@
 
 package org.springframework.test.context.bean.override;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-import org.springframework.beans.factory.support.BeanDefinitionRegistry;
-import org.springframework.context.ConfigurableApplicationContext;
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.test.context.ContextConfigurationAttributes;
-import org.springframework.test.context.ContextCustomizer;
 import org.springframework.test.context.ContextCustomizerFactory;
-import org.springframework.test.context.MergedContextConfiguration;
-import org.springframework.test.context.TestContextAnnotationUtils;
+import org.springframework.util.Assert;
 
 /**
- * {@link ContextCustomizerFactory} which provides support for Bean Overriding
- * in tests.
+ * {@link ContextCustomizerFactory} implementation that provides support for
+ * {@linkplain BeanOverride Bean Overrides}.
  *
  * @author Simon Baslé
+ * @author Stephane Nicoll
+ * @author Sam Brannen
  * @since 6.2
+ * @see BeanOverride
  */
-public class BeanOverrideContextCustomizerFactory implements ContextCustomizerFactory {
+class BeanOverrideContextCustomizerFactory implements ContextCustomizerFactory {
 
 	@Override
-	public ContextCustomizer createContextCustomizer(Class<?> testClass,
+	public @Nullable BeanOverrideContextCustomizer createContextCustomizer(Class<?> testClass,
 			List<ContextConfigurationAttributes> configAttributes) {
 
-		BeanOverrideParser parser = new BeanOverrideParser();
-		parseMetadata(testClass, parser);
-		if (parser.getOverrideMetadata().isEmpty()) {
+		Set<BeanOverrideHandler> handlers = new LinkedHashSet<>();
+		findBeanOverrideHandlers(testClass, handlers);
+		if (handlers.isEmpty()) {
 			return null;
 		}
-
-		return new BeanOverrideContextCustomizer(parser.getOverrideMetadata());
+		return new BeanOverrideContextCustomizer(handlers);
 	}
 
-	private void parseMetadata(Class<?> testClass, BeanOverrideParser parser) {
-		parser.parse(testClass);
-		if (TestContextAnnotationUtils.searchEnclosingClass(testClass)) {
-			parseMetadata(testClass.getEnclosingClass(), parser);
-		}
-	}
-
-	/**
-	 * {@link ContextCustomizer} for Bean Overriding in tests.
-	 */
-	private static final class BeanOverrideContextCustomizer implements ContextCustomizer {
-
-		private final Set<OverrideMetadata> metadata;
-
-		/**
-		 * Construct a context customizer given some pre-existing override
-		 * metadata.
-		 * @param metadata a set of concrete {@link OverrideMetadata} provided
-		 * by the underlying {@link BeanOverrideParser}
-		 */
-		BeanOverrideContextCustomizer(Set<OverrideMetadata> metadata) {
-			this.metadata = metadata;
-		}
-
-		@Override
-		public void customizeContext(ConfigurableApplicationContext context, MergedContextConfiguration mergedConfig) {
-			if (context instanceof BeanDefinitionRegistry registry) {
-				BeanOverrideBeanPostProcessor.register(registry, this.metadata);
-			}
-		}
-
-		@Override
-		public boolean equals(Object obj) {
-			if (obj == this) {
-				return true;
-			}
-			if (obj == null || obj.getClass() != getClass()) {
-				return false;
-			}
-			BeanOverrideContextCustomizer other = (BeanOverrideContextCustomizer) obj;
-			return this.metadata.equals(other.metadata);
-		}
-
-		@Override
-		public int hashCode() {
-			return this.metadata.hashCode();
-		}
+	private void findBeanOverrideHandlers(Class<?> testClass, Set<BeanOverrideHandler> handlers) {
+		BeanOverrideHandler.findAllHandlers(testClass).forEach(handler ->
+				Assert.state(handlers.add(handler), () ->
+						"Duplicate BeanOverrideHandler discovered in test class %s: %s"
+							.formatted(testClass.getName(), handler)));
 	}
 
 }

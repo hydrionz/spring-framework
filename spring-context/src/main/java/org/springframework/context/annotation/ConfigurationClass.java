@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2024 the original author or authors.
+ * Copyright 2002-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,8 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.beans.factory.parsing.Location;
 import org.springframework.beans.factory.parsing.Problem;
 import org.springframework.beans.factory.parsing.ProblemReporter;
@@ -31,7 +33,6 @@ import org.springframework.core.io.Resource;
 import org.springframework.core.type.AnnotationMetadata;
 import org.springframework.core.type.MethodMetadata;
 import org.springframework.core.type.classreading.MetadataReader;
-import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
 
@@ -53,8 +54,7 @@ final class ConfigurationClass {
 
 	private final Resource resource;
 
-	@Nullable
-	private String beanName;
+	private @Nullable String beanName;
 
 	private boolean scanned = false;
 
@@ -154,8 +154,7 @@ final class ConfigurationClass {
 		this.beanName = beanName;
 	}
 
-	@Nullable
-	String getBeanName() {
+	@Nullable String getBeanName() {
 		return this.beanName;
 	}
 
@@ -203,6 +202,15 @@ final class ConfigurationClass {
 		return this.beanMethods;
 	}
 
+	boolean hasNonStaticBeanMethods() {
+		for (BeanMethod beanMethod : this.beanMethods) {
+			if (!beanMethod.getMetadata().isStatic()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	void addImportedResource(String importedResource, Class<? extends BeanDefinitionReader> readerClass) {
 		this.importedResources.put(importedResource, readerClass);
 	}
@@ -219,11 +227,13 @@ final class ConfigurationClass {
 		return this.importBeanDefinitionRegistrars;
 	}
 
+	@SuppressWarnings("NullAway") // Reflection
 	void validate(ProblemReporter problemReporter) {
-		Map<String, Object> attributes = this.metadata.getAnnotationAttributes(Configuration.class.getName());
+		Map<String, @Nullable Object> attributes = this.metadata.getAnnotationAttributes(Configuration.class.getName());
 
-		// A configuration class may not be final (CGLIB limitation) unless it declares proxyBeanMethods=false
-		if (attributes != null && (Boolean) attributes.get("proxyBeanMethods") && this.metadata.isFinal()) {
+		// A configuration class may not be final (CGLIB limitation) unless it does not have to proxy bean methods
+		if (attributes != null && (Boolean) attributes.get("proxyBeanMethods") && hasNonStaticBeanMethods() &&
+				this.metadata.isFinal()) {
 			problemReporter.error(new FinalConfigurationProblem());
 		}
 
