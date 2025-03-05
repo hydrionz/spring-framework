@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2023 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ import java.util.Set;
 import org.assertj.core.api.AbstractAssert;
 import org.assertj.core.api.AssertProvider;
 import org.assertj.core.api.StringAssert;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -47,7 +48,6 @@ import org.springframework.javapoet.CodeBlock;
 import org.springframework.javapoet.FieldSpec;
 import org.springframework.javapoet.JavaFile;
 import org.springframework.javapoet.TypeSpec;
-import org.springframework.lang.Nullable;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
@@ -288,6 +288,34 @@ class ValueCodeGeneratorTests {
 					.hasImport(ResolvableType.class, List.class, Map.class).hasValueCode(
 							"ResolvableType.forClassWithGenerics(Map.class, ResolvableType.forClass(Integer.class), "
 									+ "ResolvableType.forClassWithGenerics(List.class, String.class))");
+		}
+
+		@Test
+		void generateWhenUnresolvedGenericType() throws NoSuchFieldException {
+			ResolvableType resolvableType = ResolvableType
+					.forField(SampleTypes.class.getField("genericList"));
+			assertThat(resolve(generateCode(resolvableType)))
+					.hasImport(ResolvableType.class, List.class)
+					.hasValueCode("ResolvableType.forClass(List.class)");
+		}
+
+		@Test
+		void generateWhenUnresolvedNestedGenericType() throws NoSuchFieldException {
+			ResolvableType resolvableType = ResolvableType
+					.forField(SampleTypes.class.getField("mapWithNestedGenericInValueType"));
+			assertThat(resolve(generateCode(resolvableType)))
+					.hasImport(ResolvableType.class, List.class)
+					.hasValueCode("""
+							ResolvableType.forClassWithGenerics(Map.class, ResolvableType.forClass(String.class), \
+							ResolvableType.forClass(List.class))""");
+		}
+
+		static class SampleTypes<A> {
+
+			public List<A> genericList;
+
+			public Map<String, List<A>> mapWithNestedGenericInValueType;
+
 		}
 
 	}

@@ -37,6 +37,7 @@ import org.crac.CheckpointException;
 import org.crac.Core;
 import org.crac.RestoreException;
 import org.crac.management.CRaCMXBean;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
@@ -49,16 +50,11 @@ import org.springframework.context.Phased;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.core.NativeDetector;
 import org.springframework.core.SpringProperties;
-import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
 
 /**
  * Spring's default implementation of the {@link LifecycleProcessor} strategy.
- *
- * <p>Provides interaction with {@link Lifecycle} and {@link SmartLifecycle} beans in
- * groups for specific phases, on startup/shutdown as well as for explicit start/stop
- * interactions on a {@link org.springframework.context.ConfigurableApplicationContext}.
  *
  * <p>Provides interaction with {@link Lifecycle} and {@link SmartLifecycle} beans in
  * groups for specific phases, on startup/shutdown as well as for explicit start/stop
@@ -98,7 +94,7 @@ public class DefaultLifecycleProcessor implements LifecycleProcessor, BeanFactor
 	public static final String ON_REFRESH_VALUE = "onRefresh";
 
 
-	private static final boolean checkpointOnRefresh =
+	private static boolean checkpointOnRefresh =
 			ON_REFRESH_VALUE.equalsIgnoreCase(SpringProperties.getProperty(CHECKPOINT_PROPERTY_NAME));
 
 	private static final boolean exitOnRefresh =
@@ -106,19 +102,18 @@ public class DefaultLifecycleProcessor implements LifecycleProcessor, BeanFactor
 
 	private final Log logger = LogFactory.getLog(getClass());
 
+	private final Map<Integer, Long> timeoutsForShutdownPhases = new ConcurrentHashMap<>();
+
 	private volatile long timeoutPerShutdownPhase = 10000;
 
 	private volatile boolean running;
 
-	@Nullable
-	private volatile ConfigurableListableBeanFactory beanFactory;
+	private volatile @Nullable ConfigurableListableBeanFactory beanFactory;
 
-	@Nullable
-	private volatile Set<String> stoppedBeans;
+	private volatile @Nullable Set<String> stoppedBeans;
 
 	// Just for keeping a strong reference to the registered CRaC Resource, if any
-	@Nullable
-	private Object cracResource;
+	private @Nullable Object cracResource;
 
 
 	public DefaultLifecycleProcessor() {
@@ -133,6 +128,37 @@ public class DefaultLifecycleProcessor implements LifecycleProcessor, BeanFactor
 
 
 	/**
+	 * Specify the maximum time allotted for the shutdown of each given phase
+	 * (group of {@link SmartLifecycle} beans with the same 'phase' value).
+	 * <p>In case of no specific timeout configured, the default timeout per
+	 * shutdown phase will apply: 10000 milliseconds (10 seconds) as of 6.2.
+	 * @param timeoutsForShutdownPhases a map of phase values (matching
+	 * {@link SmartLifecycle#getPhase()}) and corresponding timeout values
+	 * (in milliseconds)
+	 * @since 6.2
+	 * @see SmartLifecycle#getPhase()
+	 * @see #setTimeoutPerShutdownPhase
+	 */
+	public void setTimeoutsForShutdownPhases(Map<Integer, Long> timeoutsForShutdownPhases) {
+		this.timeoutsForShutdownPhases.putAll(timeoutsForShutdownPhases);
+	}
+
+	/**
+	 * Specify the maximum time allotted for the shutdown of a specific phase
+	 * (group of {@link SmartLifecycle} beans with the same 'phase' value).
+	 * <p>In case of no specific timeout configured, the default timeout per
+	 * shutdown phase will apply: 10000 milliseconds (10 seconds) as of 6.2.
+	 * @param phase the phase value (matching {@link SmartLifecycle#getPhase()})
+	 * @param timeout the corresponding timeout value (in milliseconds)
+	 * @since 6.2
+	 * @see SmartLifecycle#getPhase()
+	 * @see #setTimeoutPerShutdownPhase
+	 */
+	public void setTimeoutForShutdownPhase(int phase, long timeout) {
+		this.timeoutsForShutdownPhases.put(phase, timeout);
+	}
+
+	/**
 	 * Specify the maximum time allotted in milliseconds for the shutdown of any
 	 * phase (group of {@link SmartLifecycle} beans with the same 'phase' value).
 	 * <p>The default value is 10000 milliseconds (10 seconds) as of 6.2.
@@ -140,6 +166,11 @@ public class DefaultLifecycleProcessor implements LifecycleProcessor, BeanFactor
 	 */
 	public void setTimeoutPerShutdownPhase(long timeoutPerShutdownPhase) {
 		this.timeoutPerShutdownPhase = timeoutPerShutdownPhase;
+	}
+
+	private long determineTimeout(int phase) {
+		Long timeout = this.timeoutsForShutdownPhases.get(phase);
+		return (timeout != null ? timeout : this.timeoutPerShutdownPhase);
 	}
 
 	@Override
@@ -194,6 +225,7 @@ public class DefaultLifecycleProcessor implements LifecycleProcessor, BeanFactor
 	@Override
 	public void onRefresh() {
 		if (checkpointOnRefresh) {
+			checkpointOnRefresh = false;
 			new CracDelegate().checkpointRestore();
 		}
 		if (exitOnRefresh) {
@@ -249,13 +281,13 @@ public class DefaultLifecycleProcessor implements LifecycleProcessor, BeanFactor
 
 		lifecycleBeans.forEach((beanName, bean) -> {
 			if (!autoStartupOnly || isAutoStartupCandidate(beanName, bean)) {
-				int phase = getPhase(bean);
-				phases.computeIfAbsent(
-						phase,
-						p -> new LifecycleGroup(phase, this.timeoutPerShutdownPhase, lifecycleBeans, autoStartupOnly)
+				int startupPhase = getPhase(bean);
+				phases.computeIfAbsent(startupPhase,
+						phase -> new LifecycleGroup(phase, determineTimeout(phase), lifecycleBeans, autoStartupOnly)
 				).add(beanName, bean);
 			}
 		});
+
 		if (!phases.isEmpty()) {
 			phases.values().forEach(LifecycleGroup::start);
 		}
@@ -306,13 +338,14 @@ public class DefaultLifecycleProcessor implements LifecycleProcessor, BeanFactor
 	private void stopBeans() {
 		Map<String, Lifecycle> lifecycleBeans = getLifecycleBeans();
 		Map<Integer, LifecycleGroup> phases = new TreeMap<>(Comparator.reverseOrder());
+
 		lifecycleBeans.forEach((beanName, bean) -> {
 			int shutdownPhase = getPhase(bean);
-			phases.computeIfAbsent(
-					shutdownPhase,
-					p -> new LifecycleGroup(shutdownPhase, this.timeoutPerShutdownPhase, lifecycleBeans, false)
+			phases.computeIfAbsent(shutdownPhase,
+					phase -> new LifecycleGroup(phase, determineTimeout(phase), lifecycleBeans, false)
 			).add(beanName, bean);
 		});
+
 		if (!phases.isEmpty()) {
 			phases.values().forEach(LifecycleGroup::stop);
 		}
@@ -372,6 +405,9 @@ public class DefaultLifecycleProcessor implements LifecycleProcessor, BeanFactor
 			catch (Throwable ex) {
 				if (logger.isWarnEnabled()) {
 					logger.warn("Failed to stop bean '" + beanName + "'", ex);
+				}
+				if (bean instanceof SmartLifecycle) {
+					latch.countDown();
 				}
 			}
 		}
@@ -553,8 +589,7 @@ public class DefaultLifecycleProcessor implements LifecycleProcessor, BeanFactor
 	 */
 	private class CracResourceAdapter implements org.crac.Resource {
 
-		@Nullable
-		private CyclicBarrier barrier;
+		private @Nullable CyclicBarrier barrier;
 
 		@Override
 		public void beforeCheckpoint(org.crac.Context<? extends org.crac.Resource> context) {

@@ -20,6 +20,8 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpCookie;
 import org.springframework.http.HttpHeaders;
@@ -55,7 +57,7 @@ public final class RestClientAdapter implements HttpExchangeAdapter {
 
 	@Override
 	public boolean supportsRequestAttributes() {
-		return false;
+		return true;
 	}
 
 	@Override
@@ -69,7 +71,7 @@ public final class RestClientAdapter implements HttpExchangeAdapter {
 	}
 
 	@Override
-	public <T> T exchangeForBody(HttpRequestValues values, ParameterizedTypeReference<T> bodyType) {
+	public <T> @Nullable T exchangeForBody(HttpRequestValues values, ParameterizedTypeReference<T> bodyType) {
 		return newRequest(values).retrieve().body(bodyType);
 	}
 
@@ -118,6 +120,8 @@ public final class RestClientAdapter implements HttpExchangeAdapter {
 			}));
 			bodySpec.header(HttpHeaders.COOKIE, String.join("; ", cookies));
 		}
+
+		bodySpec.attributes(attributes -> attributes.putAll(values.getAttributes()));
 
 		if (values.getBodyValue() != null) {
 			bodySpec.body(values.getBodyValue());

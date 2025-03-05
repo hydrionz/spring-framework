@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2024 the original author or authors.
+ * Copyright 2002-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,54 +18,66 @@ package org.springframework.test.context.bean.override;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
-import java.lang.reflect.TypeVariable;
-
-import org.springframework.beans.factory.config.BeanDefinition;
-import org.springframework.core.ResolvableType;
+import java.util.Collections;
+import java.util.List;
 
 /**
- * Strategy interface for Bean Override processing.
+ * Strategy interface for Bean Override processing, which creates
+ * {@link BeanOverrideHandler} instances that drive how target beans are
+ * overridden.
  *
- * <p>Processors are generally linked to one or more specific concrete annotations
- * (meta-annotated with {@link BeanOverride @BeanOverride}) and specify different
- * steps in the process of parsing these annotations, ultimately creating
- * {@link OverrideMetadata} which will be used to instantiate the overrides.
+ * <p>At least one composed annotation that is meta-annotated with
+ * {@link BeanOverride @BeanOverride} must be a companion of this processor and
+ * may optionally provide annotation attributes that can be used to configure the
+ * {@code BeanOverrideHandler}.
  *
  * <p>Implementations are required to have a no-argument constructor and be
  * stateless.
  *
  * @author Simon Baslé
+ * @author Stephane Nicoll
+ * @author Sam Brannen
  * @since 6.2
  */
-@FunctionalInterface
 public interface BeanOverrideProcessor {
 
 	/**
-	 * Determine the {@link ResolvableType} for which an {@link OverrideMetadata}
-	 * instance will be created &mdash; for example, by using the supplied annotation
-	 * to determine the type.
-	 * <p>The default implementation deduces the field's corresponding
-	 * {@link ResolvableType}, additionally tracking the source class if the
-	 * field's type is a {@link TypeVariable}.
+	 * Create a {@link BeanOverrideHandler} for the given annotated field.
+	 * <p>This method will only be invoked when a {@link BeanOverride @BeanOverride}
+	 * annotation is declared on a field &mdash; for example, if the supplied field
+	 * is annotated with {@code @MockitoBean}.
+	 * @param overrideAnnotation the composed annotation that declares the
+	 * {@code @BeanOverride} annotation which registers this processor
+	 * @param testClass the test class to process
+	 * @param field the annotated field
+	 * @return the {@code BeanOverrideHandler} that should handle the given field
+	 * @see #createHandlers(Annotation, Class)
 	 */
-	default ResolvableType getOrDeduceType(Field field, Annotation annotation, Class<?> source) {
-		return (field.getGenericType() instanceof TypeVariable ?
-				ResolvableType.forField(field, source) : ResolvableType.forField(field));
-	}
+	BeanOverrideHandler createHandler(Annotation overrideAnnotation, Class<?> testClass, Field field);
 
 	/**
-	 * Create an {@link OverrideMetadata} instance for the given annotated field
-	 * and target {@link #getOrDeduceType(Field, Annotation, Class) type}.
-	 * <p>Specific implementations of metadata can have state to be used during
-	 * override {@linkplain OverrideMetadata#createOverride(String, BeanDefinition,
-	 * Object) instance creation} &mdash; for example, from further parsing of the
-	 * annotation or the annotated field.
-	 * @param field the annotated field
-	 * @param overrideAnnotation the field annotation
-	 * @param typeToOverride the target type
-	 * @return a new {@link OverrideMetadata} instance
-	 * @see #getOrDeduceType(Field, Annotation, Class)
+	 * Create a list of {@link BeanOverrideHandler} instances for the given override
+	 * annotation and test class.
+	 * <p>This method will only be invoked when a {@link BeanOverride @BeanOverride}
+	 * annotation is declared at the type level &mdash; for example, if the supplied
+	 * test class is annotated with {@code @MockitoBean}.
+	 * <p>Note that the test class may not be directly annotated with the override
+	 * annotation. For example, the override annotation may have been declared
+	 * on an interface, superclass, or enclosing class within the test class
+	 * hierarchy.
+	 * <p>The default implementation returns an empty list, signaling that this
+	 * {@code BeanOverrideProcessor} does not support type-level {@code @BeanOverride}
+	 * declarations. Can be overridden by concrete implementations to support
+	 * type-level use cases.
+	 * @param overrideAnnotation the composed annotation that declares the
+	 * {@code @BeanOverride} annotation which registers this processor
+	 * @param testClass the test class to process
+	 * @return the list of {@code BeanOverrideHandlers} for the annotated class
+	 * @since 6.2.2
+	 * @see #createHandler(Annotation, Class, Field)
 	 */
-	OverrideMetadata createMetadata(Field field, Annotation overrideAnnotation, ResolvableType typeToOverride);
+	default List<BeanOverrideHandler> createHandlers(Annotation overrideAnnotation, Class<?> testClass) {
+		return Collections.emptyList();
+	}
 
 }

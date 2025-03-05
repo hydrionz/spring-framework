@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2023 the original author or authors.
+ * Copyright 2002-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,8 +66,25 @@ public abstract class AbstractFileResolvingResource extends AbstractResource {
 					else if (code == HttpURLConnection.HTTP_NOT_FOUND) {
 						return false;
 					}
+					else if (code == HttpURLConnection.HTTP_BAD_METHOD) {
+						con = url.openConnection();
+						customizeConnection(con);
+						if (con instanceof HttpURLConnection newHttpCon) {
+							code = newHttpCon.getResponseCode();
+							if (code == HttpURLConnection.HTTP_OK) {
+								return true;
+							}
+							else if (code == HttpURLConnection.HTTP_NOT_FOUND) {
+								return false;
+							}
+							httpCon = newHttpCon;
+						}
+					}
 				}
-				if (con.getContentLengthLong() > 0) {
+				// Check content-length entry but not for JarURLConnection where
+				// this would open the jar file but effectively never close it ->
+				// for jar entries, always fall back to stream existence instead.
+				if (!(con instanceof JarURLConnection) && con.getContentLengthLong() > 0) {
 					return true;
 				}
 				if (httpCon != null) {
@@ -111,6 +128,15 @@ public abstract class AbstractFileResolvingResource extends AbstractResource {
 				if (con instanceof HttpURLConnection httpCon) {
 					httpCon.setRequestMethod("HEAD");
 					int code = httpCon.getResponseCode();
+					if (code == HttpURLConnection.HTTP_BAD_METHOD) {
+						con = url.openConnection();
+						customizeConnection(con);
+						if (!(con instanceof HttpURLConnection newHttpCon)) {
+							return false;
+						}
+						code = newHttpCon.getResponseCode();
+						httpCon = newHttpCon;
+					}
 					if (code != HttpURLConnection.HTTP_OK) {
 						httpCon.disconnect();
 						return false;
@@ -259,7 +285,14 @@ public abstract class AbstractFileResolvingResource extends AbstractResource {
 			if (con instanceof HttpURLConnection httpCon) {
 				httpCon.setRequestMethod("HEAD");
 			}
-			return con.getContentLengthLong();
+			long length = con.getContentLengthLong();
+			if (length <= 0 && con instanceof HttpURLConnection httpCon &&
+					httpCon.getResponseCode() == HttpURLConnection.HTTP_BAD_METHOD) {
+				con = url.openConnection();
+				customizeConnection(con);
+				length = con.getContentLengthLong();
+			}
+			return length;
 		}
 	}
 
@@ -288,9 +321,17 @@ public abstract class AbstractFileResolvingResource extends AbstractResource {
 			httpCon.setRequestMethod("HEAD");
 		}
 		long lastModified = con.getLastModified();
-		if (fileCheck && lastModified == 0 && con.getContentLengthLong() <= 0) {
-			throw new FileNotFoundException(getDescription() +
-					" cannot be resolved in the file system for checking its last-modified timestamp");
+		if (lastModified == 0) {
+			if (con instanceof HttpURLConnection httpCon &&
+					httpCon.getResponseCode() == HttpURLConnection.HTTP_BAD_METHOD) {
+				con = url.openConnection();
+				customizeConnection(con);
+				lastModified = con.getLastModified();
+			}
+			if (fileCheck && con.getContentLengthLong() <= 0) {
+				throw new FileNotFoundException(getDescription() +
+						" cannot be resolved in the file system for checking its last-modified timestamp");
+			}
 		}
 		return lastModified;
 	}

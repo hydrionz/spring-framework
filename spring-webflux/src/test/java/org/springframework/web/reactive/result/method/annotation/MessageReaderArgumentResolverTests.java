@@ -32,6 +32,7 @@ import io.reactivex.rxjava3.core.Maybe;
 import io.reactivex.rxjava3.core.Observable;
 import io.reactivex.rxjava3.core.Single;
 import jakarta.xml.bind.annotation.XmlRootElement;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
@@ -45,13 +46,13 @@ import org.springframework.http.MediaType;
 import org.springframework.http.codec.DecoderHttpMessageReader;
 import org.springframework.http.codec.HttpMessageReader;
 import org.springframework.http.codec.json.Jackson2JsonDecoder;
-import org.springframework.lang.Nullable;
 import org.springframework.validation.Errors;
 import org.springframework.validation.Validator;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.support.ConfigurableWebBindingInitializer;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.reactive.BindingContext;
+import org.springframework.web.server.PayloadTooLargeException;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.ServerWebInputException;
 import org.springframework.web.server.UnsupportedMediaTypeStatusException;
@@ -110,6 +111,24 @@ class MessageReaderArgumentResolverTests {
 				param, true, this.bindingContext, exchange).block();
 
 		StepVerifier.create(result).expectError(ServerWebInputException.class).verify();
+	}
+
+	@Test @SuppressWarnings("unchecked")
+	public void tooLargeBody() {
+		StringBuilder bodyBuilder = new StringBuilder();
+		while (bodyBuilder.toString().getBytes().length < 256 * 1024) {
+			bodyBuilder.append("The default maximum input length is 256kb.");
+		}
+		String body = "{\"bar\":\"BARBAR\",\"foo\":\"" + bodyBuilder + "\"}";
+
+		MockServerHttpRequest request = post("/path").contentType(MediaType.APPLICATION_JSON).body(body);
+		ServerWebExchange exchange = MockServerWebExchange.from(request);
+		ResolvableType type = forClassWithGenerics(Mono.class, TestBean.class);
+		MethodParameter param = this.testMethod.arg(type);
+		Mono<TestBean> result = (Mono<TestBean>) this.resolver.readBody(
+				param, true, this.bindingContext, exchange).block();
+
+		StepVerifier.create(result).expectError(PayloadTooLargeException.class).verify();
 	}
 
 	@Test

@@ -25,6 +25,7 @@ import java.util.function.Predicate;
 import javax.lang.model.element.Modifier;
 
 import org.assertj.core.api.InstanceOfAssertFactories;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -61,7 +62,6 @@ import org.springframework.core.type.AnnotationMetadata;
 import org.springframework.javapoet.CodeBlock;
 import org.springframework.javapoet.MethodSpec;
 import org.springframework.javapoet.ParameterizedTypeName;
-import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -101,8 +101,8 @@ class ConfigurationClassPostProcessorAotContributionTests {
 				initializer.accept(freshBeanFactory);
 				freshContext.refresh();
 				assertThat(freshBeanFactory.getBeanPostProcessors()).filteredOn(ImportAwareAotBeanPostProcessor.class::isInstance)
-						.singleElement().satisfies(postProcessor -> assertPostProcessorEntry(postProcessor, ImportAwareConfiguration.class,
-								ImportConfiguration.class));
+						.singleElement().satisfies(postProcessor ->
+								assertPostProcessorEntry(postProcessor, ImportAwareConfiguration.class, ImportConfiguration.class));
 				freshContext.close();
 			});
 		}
@@ -223,9 +223,8 @@ class ConfigurationClassPostProcessorAotContributionTests {
 				this.metadata = importMetadata;
 			}
 
-			@Nullable
 			@Override
-			public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
+			public @Nullable Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
 				if (beanName.equals("testProcessing")) {
 					return this.metadata;
 				}
@@ -244,6 +243,7 @@ class ConfigurationClassPostProcessorAotContributionTests {
 
 		}
 	}
+
 
 	@Nested
 	class PropertySourceTests {
@@ -410,8 +410,8 @@ class ConfigurationClassPostProcessorAotContributionTests {
 		@PropertySource("classpath:org/springframework/context/annotation/p?.properties")
 		static class PropertySourceWithWildcardLocationPatternConfiguration {
 		}
-
 	}
+
 
 	@Nested
 	class ConfigurationClassProxyTests {
@@ -432,17 +432,15 @@ class ConfigurationClassPostProcessorAotContributionTests {
 					getRegisteredBean(CglibConfiguration.class))).isNotNull();
 		}
 
-
 		private RegisteredBean getRegisteredBean(Class<?> bean) {
 			this.beanFactory.registerBeanDefinition("test", new RootBeanDefinition(bean));
 			this.processor.postProcessBeanFactory(this.beanFactory);
 			return RegisteredBean.of(this.beanFactory, "test");
 		}
-
 	}
 
-	@Nullable
-	private BeanFactoryInitializationAotContribution getContribution(Class<?>... types) {
+
+	private @Nullable BeanFactoryInitializationAotContribution getContribution(Class<?>... types) {
 		DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
 		for (Class<?> type : types) {
 			beanFactory.registerBeanDefinition(type.getName(), new RootBeanDefinition(type));
@@ -458,8 +456,8 @@ class ConfigurationClassPostProcessorAotContributionTests {
 				.containsExactly(entry(key.getName(), value.getName()));
 	}
 
-	static class CustomPropertySourcesFactory extends DefaultPropertySourceFactory {
 
+	static class CustomPropertySourcesFactory extends DefaultPropertySourceFactory {
 	}
 
 }
